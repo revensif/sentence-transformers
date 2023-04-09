@@ -1,45 +1,52 @@
-"""
-This is a simple application for sentence embeddings: clustering
+from sklearn.cluster import KMeans
+from sklearn.feature_extraction.text import TfidfVectorizer
+import csv
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+import seaborn as sns
 
-Sentences are mapped to sentence embeddings and then agglomerative clustering with a threshold is applied.
-"""
-from sentence_transformers import SentenceTransformer
-from sklearn.cluster import AgglomerativeClustering
-import numpy as np
+dataset_path = "reviews.tsv"
+max_corpus_size = 20000  # We limit our corpus to only the first 20k questions
 
-embedder = SentenceTransformer('all-MiniLM-L6-v2')
+# Get all unique sentences from the file
+corpus_sentences = set()
+with open(dataset_path, encoding='utf8') as fIn:
+    reader = csv.DictReader(fIn, delimiter='\t', quoting=csv.QUOTE_MINIMAL)
+    for row in reader:
+        corpus_sentences.add(row['headline'])
+        if len(corpus_sentences) >= max_corpus_size:
+            break
 
-# Corpus with example sentences
-corpus = ['A man is eating food.',
-          'A man is eating a piece of bread.',
-          'A man is eating pasta.',
-          'The girl is carrying a baby.',
-          'The baby is carried by the woman',
-          'A man is riding a horse.',
-          'A man is riding a white horse on an enclosed ground.',
-          'A monkey is playing drums.',
-          'Someone in a gorilla costume is playing a set of drums.',
-          'A cheetah is running behind its prey.',
-          'A cheetah chases prey on across a field.'
-          ]
-corpus_embeddings = embedder.encode(corpus)
+corpus_sentences = list(corpus_sentences)
 
-# Normalize the embeddings to unit length
-corpus_embeddings = corpus_embeddings /  np.linalg.norm(corpus_embeddings, axis=1, keepdims=True)
+vectorizer = TfidfVectorizer()
+X = vectorizer.fit_transform(corpus_sentences)
 
-# Perform kmean clustering
-clustering_model = AgglomerativeClustering(n_clusters=None, distance_threshold=1.5) #, affinity='cosine', linkage='average', distance_threshold=0.4)
-clustering_model.fit(corpus_embeddings)
-cluster_assignment = clustering_model.labels_
+pca = PCA(n_components=2)
+X_2d = pca.fit_transform(X.toarray())
 
-clustered_sentences = {}
-for sentence_id, cluster_id in enumerate(cluster_assignment):
-    if cluster_id not in clustered_sentences:
-        clustered_sentences[cluster_id] = []
+kmeans = KMeans(n_clusters=7, n_init=20)
+kmeans.fit(X)
 
-    clustered_sentences[cluster_id].append(corpus[sentence_id])
+fig, ax = plt.subplots(figsize=(10, 8))
 
-for i, cluster in clustered_sentences.items():
-    print("Cluster ", i+1)
-    print(cluster)
-    print("")
+clusters = {}
+for i, label in enumerate(kmeans.labels_):
+    if label not in clusters:
+        clusters[label] = []
+    clusters[label].append(corpus_sentences[i])
+
+for label in clusters:
+    indices = [i for i, x in enumerate(kmeans.labels_) if x == label]
+    ax.scatter(X_2d[indices, 0], X_2d[indices, 1], label=f'Cluster {label}')
+
+ax.legend()
+plt.show()
+
+for label, sentences in clusters.items():
+    print("Cluster ", label, ":")
+    for sentence in sentences[0:5]:
+        print(" - ", sentence)
+    print("\t", "...")
+    for sentence in sentences[-5:]:
+        print(" - ", sentence)
